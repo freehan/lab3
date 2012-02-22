@@ -548,7 +548,7 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 //
 //   You can use the functions bitvector_set(), bitvector_clear(), and
 //   bitvector_test() to do bit operations on the map.
-//=====by SK
+//=====by SK=====
 static uint32_t
 allocate_block(void)
 {
@@ -585,7 +585,7 @@ allocate_block(void)
 //   bitmap.  (You might want to program defensively and make sure the block
 //   number isn't obviously bogus: the boot sector, superblock, free-block
 //   bitmap, and inode blocks must never be freed.  But this is not required.)
-
+//====by SK====
 static void
 free_block(uint32_t blockno)
 {
