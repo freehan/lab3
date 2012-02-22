@@ -548,11 +548,29 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 //
 //   You can use the functions bitvector_set(), bitvector_clear(), and
 //   bitvector_test() to do bit operations on the map.
-
+//=====by SK
 static uint32_t
 allocate_block(void)
 {
-	/* EXERCISE: Your code here */
+	uint32_t bitMapEnd = ospfs_super->os_firstinob-1;
+	uint32_t bitMapStart = OSPFS_FREEMAP_BLK;
+
+	//get  bitmap;
+	int i;
+	for(i = bitMapStart; i<= bitMapEnd; i++){	
+		void* map = ospfs_block(i);
+		//suppose the size of the block is OSPFS_BLKSIZE*8 bit;
+		int j;
+		for(j=0; j<OSPFS_BLKSIZE*8;j++){
+			if(bitvector_test(map,j)==0){ //free 
+				bitvector_set(map,j); //notice
+				//offset, start from the block after inode area
+				uint32_t initOffset = bitMapEnd + 1 + ospfs_super->os_ninodes;
+				uint32_t mapOffset = OSPFS_BLKSIZE*8*(i-bitMapStart);
+				return initOffset+mapOffset+j; 
+			}
+		}
+	}
 	return 0;
 }
 
@@ -571,7 +589,28 @@ allocate_block(void)
 static void
 free_block(uint32_t blockno)
 {
-	/* EXERCISE: Your code here */
+	if(blockno < 2){	//0 as boot sector and 1 as superblock
+		return;
+	}
+	uint32_t bitMapEnd = ospfs_super->os_firstinob-1;
+	uint32_t bitMapStart = OSPFS_FREEMAP_BLK;
+	//[Suppose] we never free bitmap and inode
+	if(blockno>=bitMapStart && blockno<=bitMapEnd+ospfs_super->os_ninodes){
+		return;
+	}
+	uint32_t mapNo = bitMapStart + blockno / (OSPFS_BLKSIZE*8);
+	if(mapNo>bitMapEnd){
+		return;	//out of boundary
+	}
+	uint32_t offset = blockno % (OSPFS_BLKSIZE*8); 
+	//[Question] inode can be freed?
+
+	//get bitmap;
+	void* map = ospfs_block(mapNo); 
+	if(bitvector_test(map,offset)==0){ //free an unoccupied block
+		return;
+	}
+	bitvector_clear(map,offset); //clear
 }
 
 
@@ -874,7 +913,8 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 	}
 
     done:
-	return (retval >= 0 ? amount : retval);
+	return (retval >= 0 ? amount : retval); 
+	return 0;
 }
 
 
@@ -1006,7 +1046,9 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	// 2. If there's no empty entries, add a block to the directory.
 	//    Use ERR_PTR if this fails; otherwise, clear out all the directory
 	//    entries and return one of them.
-
+	uint32_t blockNo = allocate_block();
+	eprintk("the block assigned is %ld",blockNo);
+	free_block(blockNo);
 	/* EXERCISE: Your code here. */
 	return ERR_PTR(-EINVAL); // Replace this line
 }
@@ -1228,6 +1270,6 @@ module_init(init_ospfs_fs)
 module_exit(exit_ospfs_fs)
 
 // Information about the module
-MODULE_AUTHOR("Skeletor");
+MODULE_AUTHOR("ZHIYANG WANG & MINHAN XIA");
 MODULE_DESCRIPTION("OSPFS");
 MODULE_LICENSE("GPL");
