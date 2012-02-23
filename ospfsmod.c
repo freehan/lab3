@@ -1220,6 +1220,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	//to occupy an inode, you need to set its file size more than 0
 	//if some error happened, we need to clear all the things we declared before.
 	//	for example, when allocating file blocks, space exhausting happens, then we need to remove the direntry we created (just set its name as 0 and ino as 0)
+	// you can also have a look at allocate_block() as allocate a free block for data.
 
     return -ENOMEM;			
 
