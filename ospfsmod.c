@@ -420,6 +420,9 @@ ospfs_dir_lookup(struct inode *dir, struct dentry *dentry, struct nameidata *ign
 //
 //   EXERCISE: Finish implementing this function.
 
+static uint32_t allocate_block();
+static void free_block(uint32_t);
+
 static int
 ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 {
@@ -444,6 +447,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 	}
 
 	// actual entries
+	//[assumption] as if one fails, the whole function stops and return
 	while (r == 0 && ok_so_far >= 0 && f_pos >= 2) {
 		ospfs_direntry_t *od;
 		ospfs_inode_t *entry_oi;
@@ -452,8 +456,8 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * the loop.  For now we do this all the time.
 		 *
 		 * EXERCISE: Your code here */
-		r = 1;		/* Fix me! */
-		break;		/* Fix me! */
+		//r = 1;		/* Fix me! */
+		//break;		/* Fix me! */
 
 		/* Get a pointer to the next entry (od) in the directory.
 		 * The file system interprets the contents of a
@@ -474,8 +478,34 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * your function should advance f_pos by the proper amount to
 		 * advance to the next directory entry.
 		 */
-
-		/* EXERCISE: Your code here */
+		//by SK
+		od = ospfs_inode_data(dir_oi, (f_pos-2)*OSPFS_DIRENTRY_SIZE);
+		entry_oi = ospfs_inode(od->od_ino);
+		if(od->od_ino>0){//valid direntry
+			uint32_t type = -1;
+			switch(entry_oi->oi_ftype){
+				case OSPFS_FTYPE_DIR:
+					type  = DT_DIR;
+					break;
+				case OSPFS_FTYPE_REG:
+					type = DT_REG;
+					break;
+				case OSPFS_FTYPE_SYMLINK:
+					type = DT_LNK;
+					break;
+			}
+			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino,type);
+			if(ok_so_far>=0){
+				f_pos++;
+			}
+		}
+		else{ //for the skipped part
+			f_pos++;
+		}
+		//eprintk("dir size is %d, f_pos is %d, is equal?\n",dir_oi->oi_size/OSPFS_DIRENTRY_SIZE, f_pos, f_pos == dir_oi->oi_size/OSPFS_DIRENTRY_SIZE);
+		if(f_pos >= dir_oi->oi_size / OSPFS_DIRENTRY_SIZE){ //meet the end of entries
+			r = 1;
+		}
 	}
 
 	// Save the file position and return!
@@ -1047,7 +1077,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	//    Use ERR_PTR if this fails; otherwise, clear out all the directory
 	//    entries and return one of them.
 	uint32_t blockNo = allocate_block();
-	eprintk("the block assigned is %ld",blockNo);
+	eprintk("the block assigned is %ld\n",blockNo);
 	free_block(blockNo);
 	/* EXERCISE: Your code here. */
 	return ERR_PTR(-EINVAL); // Replace this line

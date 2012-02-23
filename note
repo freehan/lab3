@@ -1,0 +1,17 @@
+1. ospfs_super 	a pointer to the super block
+2. the only info in the block is its data. Struct block is only used when managing the disk data
+3. Directory 
+
+dentry is a data structure in the file system to manage the directories. It is not stored in the disk. It's mostly used when you are entering a hiarchical folder links.
+	dentry->d_name.len
+	dentry->d_op = &ospfs_dentry_ops
+		
+	OSPFS_DIRENTRY_SIZE
+		
+
+4. ospfs_size2nblocks	return the number of blocks needed for particular size
+5. ospfs_block 	return data (given inode number)
+6. ospfs_inode	return inode pointer
+	[NOTICE] ospfs_inode is different frm inode (linux)
+7. ospfs_inode_blockno	return block number for a file (given offset in byte)
+8. ospfs_inode_data 	return the data for offset for an inode
