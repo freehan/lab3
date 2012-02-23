@@ -206,7 +206,7 @@ ospfs_inode_blockno(ospfs_inode_t *oi, uint32_t offset)
 //   Returns: a pointer to the 'offset'th byte of 'oi's data contents
 //
 //	Be careful: the returned pointer is only valid within a single block.
-//	This function is a simple combination of 'ospfs_inode_blockno'
+//	This function is a simple combination of 'uospfs_inode_blockno'
 //	and 'ospfs_block'.
 
 static inline void *
@@ -497,10 +497,14 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino,type);
 			if(ok_so_far>=0){
 				f_pos++;
+				r = 1;
+				break;
 			}
 		}
 		else{ //for the skipped part
 			f_pos++;
+				r = 1;
+				break;
 		}
 		//eprintk("dir size is %d, f_pos is %d, is equal?\n",dir_oi->oi_size/OSPFS_DIRENTRY_SIZE, f_pos, f_pos == dir_oi->oi_size/OSPFS_DIRENTRY_SIZE);
 		if(f_pos >= dir_oi->oi_size / OSPFS_DIRENTRY_SIZE){ //meet the end of entries
@@ -864,7 +868,7 @@ ospfs_notify_change(struct dentry *dentry, struct iattr *attr)
 	struct inode *inode = dentry->d_inode;
 	ospfs_inode_t *oi = ospfs_inode(inode->i_ino);
 	int retval = 0;
-
+	eprintk("what's up man?\n");
 	if (attr->ia_valid & ATTR_SIZE) {
 		// We should not be able to change directory size
 		if (oi->oi_ftype == OSPFS_FTYPE_DIR)
@@ -1076,11 +1080,40 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	// 2. If there's no empty entries, add a block to the directory.
 	//    Use ERR_PTR if this fails; otherwise, clear out all the directory
 	//    entries and return one of them.
-	uint32_t blockNo = allocate_block();
-	eprintk("the block assigned is %ld\n",blockNo);
-	free_block(blockNo);
-	/* EXERCISE: Your code here. */
-	return ERR_PTR(-EINVAL); // Replace this line
+	ospfs_direntry_t *od;
+	uint32_t entry_off;
+	for (entry_off = 0; entry_off < dir_oi->oi_size;
+	     entry_off += OSPFS_DIRENTRY_SIZE) {
+		od = ospfs_inode_data(dir_oi, entry_off);
+		if (od->od_ino == 0){
+			return od;
+		}
+	}
+	//ok, no free block in the existing space 
+	if(dir_oi->oi_indirect == 0){ //no indirect block
+		uint32_t indirect_oi_no = allocate_block();
+		if(indirect_oi_no == 0){
+			//no space for free bitmap
+			return ERR_PTR(-ENOSPC);
+		}
+		ospfs_inode_t* indirect_oi = ospfs_inode(indirect_oi_no);
+		dir_oi->oi_indirect = indirect_oi_no;
+		return ospfs_inode_data(indirect_oi,0);
+	}
+	else if(dir_oi->oi_indirect2 == 0){
+		uint32_t indirect2_oi_no = allocate_block();
+		if(indirect2_oi_no == 0){
+			//no space for free bitmap
+			return ERR_PTR(-ENOSPC);
+		}
+		ospfs_inode_t* indirect2_oi = ospfs_inode(indirect2_oi_no);
+		dir_oi->oi_indirect2 = indirect2_oi_no;
+		return ospfs_inode_data(indirect2_oi,0);
+	}
+	else{
+		//cannot add new entries
+		return ERR_PTR(-ENOSPC);
+	}
 }
 
 // ospfs_link(src_dentry, dir, dst_dentry
@@ -1153,7 +1186,13 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
-	return -EINVAL; // Replace this line
+	//===========SK================
+	//use this part to register in the directory about the new file
+	ospfs_direntry_t * direntry = create_blank_direntry(dir_oi);
+	strcpy(direntry->od_name, dentry->d_name.name);
+	direntry->od_ino = 141; //should be the inode #
+	//==============================
+    return -ENOMEM;			
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
