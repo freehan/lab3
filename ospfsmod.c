@@ -420,8 +420,8 @@ ospfs_dir_lookup(struct inode *dir, struct dentry *dentry, struct nameidata *ign
 //
 //   EXERCISE: Finish implementing this function.
 
-static uint32_t allocate_block();
-static void free_block(uint32_t);
+//static uint32_t allocate_block();
+//static void free_block(uint32_t);
 
 static int
 ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
@@ -480,6 +480,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 		//by SK
 		od = ospfs_inode_data(dir_oi, (f_pos-2)*OSPFS_DIRENTRY_SIZE);
+		eprintk("inode # is %d, name is %s\n",od->od_ino,od->od_name);
 		entry_oi = ospfs_inode(od->od_ino);
 		if(od->od_ino>0){//valid direntry
 			uint32_t type = -1;
@@ -1116,6 +1117,20 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	}
 }
 
+//by Sk, try to allocate an inode for the file
+uint32_t 
+allocate_inode(){
+	ospfs_inode_t *oi;
+	oi = ospfs_block(ospfs_super->os_firstinob);
+ 	int i;
+	for(i= 1; i < ospfs_super->os_ninodes; i++){
+		if(oi[i].oi_size == 0){	//ASSUMPTION size == 0 means this inode is not used
+			return i;
+		}
+	}
+	return -ENOSPC;
+}
+
 // ospfs_link(src_dentry, dir, dst_dentry
 //   Linux calls this function to create hard links.
 //   It is the ospfs_dir_inode_ops.link callback.
@@ -1188,10 +1203,24 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	/* EXERCISE: Your code here. */
 	//===========SK================
 	//use this part to register in the directory about the new file
-	ospfs_direntry_t * direntry = create_blank_direntry(dir_oi);
-	strcpy(direntry->od_name, dentry->d_name.name);
-	direntry->od_ino = 141; //should be the inode #
+	entry_ino = allocate_inode();
+	if(entry_ino == -ENOSPC){
+		return entry_ino;
+	}
+
+	ospfs_direntry_t * od = create_blank_direntry(dir_oi);
+	if (IS_ERR(od)){
+		return PTR_ERR(od);
+	}
+	strcpy(od->od_name, dentry->d_name.name);
+	od->od_ino = entry_ino; //allocate inode by SK, assume an unused inode is identified by file size as 0
 	//==============================
+	//by Sk	
+	//tips: bitmap only covers blocks for data, not for inode
+	//to occupy an inode, you need to set its file size more than 0
+	//if some error happened, we need to clear all the things we declared before.
+	//	for example, when allocating file blocks, space exhausting happens, then we need to remove the direntry we created (just set its name as 0 and ino as 0)
+
     return -ENOMEM;			
 
 	/* Execute this code after your function has successfully created the
