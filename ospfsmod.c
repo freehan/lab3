@@ -15,7 +15,7 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 
-#define DEBUG
+//#define DEBUG
 /****************************************************************************
  * ospfsmod
  *
@@ -183,6 +183,7 @@ static inline uint32_t
 ospfs_inode_blockno(ospfs_inode_t *oi, uint32_t offset)
 {
 	uint32_t blockno = offset / OSPFS_BLKSIZE;
+    //eprintk("try!!!!%d\n",blockno);
 	if (offset >= oi->oi_size || oi->oi_ftype == OSPFS_FTYPE_SYMLINK)
 		return 0;
 	else if (blockno >= OSPFS_NDIRECT + OSPFS_NINDIRECT) {
@@ -774,6 +775,7 @@ direct_index(uint32_t b)
 static int
 add_block(ospfs_inode_t *oi)
 {
+    //eprintk("inside add_block\n");
 	// current number of blocks in file
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
@@ -787,9 +789,11 @@ add_block(ospfs_inode_t *oi)
     if(n < OSPFS_NDIRECT)
     {
         uint32_t newBlockIndex = allocate_block();
+        uint32_t dir_index = direct_index(n);
         if (!newBlockIndex)
             return -ENOSPC;
         memset(ospfs_block(newBlockIndex), 0, OSPFS_BLKSIZE);
+        oi->oi_direct[dir_index] = newBlockIndex;
     }
     //if need 1st indirect block
     else if(n >= OSPFS_NDIRECT && n < OSPFS_NINDIRECT + OSPFS_NDIRECT)
@@ -920,11 +924,73 @@ add_block(ospfs_inode_t *oi)
 static int
 remove_block(ospfs_inode_t *oi)
 {
+    //eprintk("inside remove_block\n");
 	// current number of blocks in file
-	//uint32_t n = ospfs_size2nblocks(oi->oi_size);
+	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
+    if (n <= OSPFS_NDIRECT) 
+    {
+        //eprintk("try\n");
+        if(oi->oi_direct[n-1] != 0)
+        {
+            free_block(oi->oi_direct[n-1]);
+            oi->oi_direct[n-1] = 0;
+        }
+        else
+            return -EIO;
+    }
+    else if (n >= OSPFS_NDIRECT && n < OSPFS_NINDIRECT + OSPFS_NDIRECT)
+    {
+        uint32_t dir_index = direct_index(n);
+        uint32_t *indirect_block = ospfs_block(oi->oi_indirect);
+        
+        free_block(indirect_block[dir_index]);
+        indirect_block[dir_index] = 0;
+        
+        if(dir_index == 0)
+        {
+            free_block(oi->oi_indirect);
+            oi->oi_indirect = 0;
+        }
+    }
+    else
+    {
+        uint32_t dir_index = direct_index(n);
+        uint32_t indirect_index = indir_index(n);
+        uint32_t *indirect2_block = 0;
+        uint32_t *indirect_block = 0;
+        
+        if(oi->oi_indirect2 != 0)
+            indirect2_block = ospfs_block(oi->oi_indirect2);
+        else
+            return -EIO;
+        
+        if(indirect2_block[indirect_index] != 0)
+            indirect_block = ospfs_block(indirect2_block[indirect_index]);
+        else
+            return -EIO;
+        
+        free_block(indirect_block[dir_index]);
+        indirect_block[dir_index] = 0;
+        
+        if(dir_index == 0)
+        {
+            free_block(indirect2_block[indirect_index]);
+            indirect2_block[indirect_index] = 0;
+            
+            if(indirect_index == 0)
+            {
+                free_block(oi->oi_indirect2);
+                oi->oi_indirect2 = 0;
+            }
+        }
+        
+        
+    }
+    oi->oi_size = (n-1)*OSPFS_BLKSIZE;
+    return 0;
 	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+	//return -EIO; // Replace this line
 }
 
 
@@ -967,9 +1033,10 @@ remove_block(ospfs_inode_t *oi)
 static int
 change_size(ospfs_inode_t *oi, uint32_t new_size)
 {
+    //eprintk("inside change_size, old size = %d, new size = %d\n", oi->oi_size, new_size);
 	uint32_t old_size = oi->oi_size;
 	int r = 0;
-
+    
 	while (ospfs_size2nblocks(oi->oi_size) < ospfs_size2nblocks(new_size)) {
 	        /* EXERCISE: Your code here */
         r = add_block(oi);
@@ -977,20 +1044,22 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
             break;
 		//return -EIO; // Replace this line
 	}
-	while (ospfs_size2nblocks(oi->oi_size) > ospfs_size2nblocks(new_size)) {
-	        /* EXERCISE: Your code here */
+
+    while (ospfs_size2nblocks(oi->oi_size) > ospfs_size2nblocks(new_size)) {
+        /* EXERCISE: Your code here */
         r = remove_block(oi);
         if(r != 0)
             break;
 		//return -EIO; // Replace this line
 	}
-
 	/* EXERCISE: Make sure you update necessary file meta data
 	             and return the proper value. */
-    if(r = 0)
+    if(r == 0)
         oi->oi_size = new_size;
     else
         oi->oi_size = old_size;
+    
+    //eprintk("after change size: %d\n",oi->oi_size);
     return r;
 	//return -EIO; // Replace this line
 }
@@ -1100,7 +1169,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
         //data left in the current block
         n = OSPFS_BLKSIZE - (*f_pos) % OSPFS_BLKSIZE;
 #ifdef DEBUG
-        eprintk("inside read while,count = %d, amount = %d, count - amount = %d, n = %d\n",count, amount, count - amount,n);
+        //eprintk("inside read while,count = %d, amount = %d, count - amount = %d, n = %d\n",count, amount, count - amount,n);
 #endif       
         //in case n is larger than buffer left //almost kill me!!!!!
         if(n > count - amount)
@@ -1145,7 +1214,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 static ssize_t
 ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
-    //eprintk("try write!\n");
+    //eprintk("inside write!\n");
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
 	size_t amount = 0;
@@ -1174,6 +1243,7 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		char *data;
 
 		if (blockno == 0) {
+            //eprintk("try!%d\n",blockno);
 			retval = -EIO;
 			goto done;
 		}
@@ -1456,7 +1526,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 static int
 ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 {
-	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
+	//ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 
 	/* EXERCISE: Your code here. */
