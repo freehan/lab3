@@ -1462,6 +1462,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 static int
 ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
 {
+    eprintk("inside create\n");
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
@@ -1486,8 +1487,19 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	//	for example, when allocating file blocks, space exhausting happens, then we need to remove the direntry we created (just set its name as 0 and ino as 0)
 	// you can also have a look at allocate_block() as allocate a free block for data.
 
-    return -ENOMEM;			
-
+    //XIA: copy the things into the allocated inode
+    ospfs_inode_t *oi = ospfs_inode(entry_ino);
+    oi->oi_mode = mode;
+    oi->oi_ftype = 0;
+    oi->oi_size = 0;
+    oi->oi_indirect2 = 0;
+    oi->oi_indirect = 0;
+    int i = 0;
+    for(i=0;i<OSPFS_NDIRECT;i++)
+    {
+        oi->oi_direct[i] = 0;
+    }
+    //return -ENOMEM;	
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
 	   getting here. */
