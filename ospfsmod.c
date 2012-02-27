@@ -15,6 +15,7 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 
+#define DEBUG
 /****************************************************************************
  * ospfsmod
  *
@@ -480,7 +481,9 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 		//by SK
 		od = ospfs_inode_data(dir_oi, (f_pos-2)*OSPFS_DIRENTRY_SIZE);
+#ifdef DEBUG
 		eprintk("inode # is %d, name is %s\n",od->od_ino,od->od_name);
+#endif
 		entry_oi = ospfs_inode(od->od_ino);
 		if(od->od_ino>0){//valid direntry
 			uint32_t type = -1;
@@ -677,12 +680,15 @@ free_block(uint32_t blockno)
 //	       block, -1 if it does not.
 //
 // EXERCISE: Fill in this function.
-
+//XIA: NEED TEST==========================
 static int32_t
 indir2_index(uint32_t b)
 {
 	// Your code here.
-	return -1;
+    if(b >= OSPFS_NDIRECT + OSPFS_NINDIRECT)
+        return 0;
+    else
+        return -1;
 }
 
 
@@ -696,12 +702,17 @@ indir2_index(uint32_t b)
 //		the doubly indirect block.
 //
 // EXERCISE: Fill in this function.
-
+//XIA: NEED TEST=========================
 static int32_t
 indir_index(uint32_t b)
 {
 	// Your code here.
-	return -1;
+    if(b < OSPFS_NDIRECT)
+        return -1;
+    else if(b >= OSPFS_NDIRECT && b < OSPFS_NDIRECT + OSPFS_NINDIRECT)
+        return 0;
+    else
+        return (b - OSPFS_NDIRECT - OSPFS_NINDIRECT) / OSPFS_NINDIRECT;
 }
 
 
@@ -713,12 +724,19 @@ indir_index(uint32_t b)
 //	    block array.
 //
 // EXERCISE: Fill in this function.
-
+//XIA: NEED TEST===========================
 static int32_t
 direct_index(uint32_t b)
 {
 	// Your code here.
-	return -1;
+    if(b < OSPFS_NDIRECT)
+        return b;
+    else if(b >= OSPFS_NDIRECT && b < OSPFS_NDIRECT + OSPFS_NINDIRECT)
+        return b - OSPFS_NDIRECT;
+    else
+        return (b - OSPFS_NDIRECT - OSPFS_NDIRECT) % OSPFS_NINDIRECT;
+        
+//	return -1;
 }
 
 
@@ -763,6 +781,37 @@ add_block(ospfs_inode_t *oi)
 	uint32_t *allocated[2] = { 0, 0 };
 
 	/* EXERCISE: Your code here */
+    /*
+    //if direct blocks is enough
+    if(n < OSPFS_NDIRECT)
+    {
+        unit32_t newBlockIndex = allocate_block();
+        if (newBlockIndex == 0)
+            return -ENOSPC;
+        oi->oi_size = (n + 1) * OSPFS_BLKSIZE;
+        return 0;
+    }
+    //if need 1st indirect block
+    else if(n >= OSPFS_NDIRECT && n < OSPFS_NINDIRECT + OSPFS_NDIRECT)
+    {
+        unit32_t newInDirBlkIndex = 0;
+        //1st indirect block have not been allocated yet
+        if(n == OSPFS_NDIRECT)
+        {
+            newInDirBlkIndex = allocate_block();
+            if(newInDirBlkIndex == 0)
+                return -ENOSPC;
+            
+            allocated[0] = newInDirBlkIndex;
+            oi->oi_indirect = newInDirBlkIndex;
+        }
+        
+        unit32_t indirect_index = n - OSPFS_NDIRECT;
+        
+    }
+    
+    */
+    
 	return -EIO; // Replace this line
 }
 
@@ -919,7 +968,21 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 	// Make sure we don't read past the end of the file!
 	// Change 'count' so we never read past the end of the file.
 	/* EXERCISE: Your code here */
-
+ 
+#ifdef DEBUG
+    eprintk("inside READ function, count is %d, f_pos = %d\n",count ,(*f_pos));
+#endif
+    //XIA:to see if the FILE POSITION is valid
+    if(oi->oi_size < (*f_pos))
+    {
+        retval = -EIO;
+        goto done;
+    }
+    //XIA:in case read past the end of the file
+    if (count > oi->oi_size - (*f_pos)) {
+        count = oi->oi_size - (*f_pos);
+    }
+    
 	// Copy the data to user block by block
 	while (amount < count && retval >= 0) {
 		uint32_t blockno = ospfs_inode_blockno(oi, *f_pos);
@@ -933,15 +996,34 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 		}
 
 		data = ospfs_block(blockno);
-
+        
 		// Figure out how much data is left in this block to read.
 		// Copy data into user space. Return -EFAULT if unable to write
 		// into user space.
 		// Use variable 'n' to track number of bytes moved.
 		/* EXERCISE: Your code here */
-		retval = -EIO; // Replace these lines
-		goto done;
+		//retval = -EIO; // Replace these lines
+		//goto done;
+        
+        
+        //XIA: TRY
+        //data left in the current block
+        n = OSPFS_BLKSIZE - (*f_pos) % OSPFS_BLKSIZE;
+#ifdef DEBUG
+        eprintk("inside read while,count = %d, amount = %d, count - amount = %d, n = %d\n",count, amount, count - amount,n);
+#endif       
+        //in case n is larger than buffer left //almost kill me!!!!!
+        if(n > count - amount)
+            n = count - amount;
 
+        //eprintk("after n = %d\n",n);
+        
+        if(copy_to_user(buffer,data,n) > 0)
+        {
+            retval = -EFAULT;
+            goto done;
+        }
+        
 		buffer += n;
 		amount += n;
 		*f_pos += n;
@@ -1124,8 +1206,10 @@ allocate_inode(){
 	oi = ospfs_block(ospfs_super->os_firstinob);
  	int i;
 	for(i= 1; i < ospfs_super->os_ninodes; i++){
-		if(oi[i].oi_size == 0){	//ASSUMPTION size == 0 means this inode is not used
-			return i;
+		if(oi[i].oi_nlink == 0){	//ASSUMPTION no link == 0 means this inode is not used
+            //XIA: it may need initalization
+            oi->oi_size = 0;
+            return i;
 		}
 	}
 	return -ENOSPC;
