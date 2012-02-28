@@ -1466,6 +1466,12 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
+    if(dentry->d_name.len > OSPFS_MAXNAMELEN)
+        return -ENAMETOOLONG;
+    
+    if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != 0)
+        return -EEXIST;
+    
 	//===========SK================
 	//use this part to register in the directory about the new file
 	entry_ino = allocate_inode();
