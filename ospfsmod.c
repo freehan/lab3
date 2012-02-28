@@ -1388,7 +1388,8 @@ allocate_inode(){
 	for(i= 1; i < ospfs_super->os_ninodes; i++){
 		if(oi[i].oi_nlink == 0){	//ASSUMPTION no link == 0 means this inode is not used
             //XIA: it may need initalization
-            oi->oi_size = 0;
+            oi[i].oi_size = 0;
+            oi[i].oi_nlink = 1;
             return i;
 		}
 	}
@@ -1497,6 +1498,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
     //XIA: initialize the new allocated inode
     ospfs_inode_t *oi = ospfs_inode(entry_ino);
     oi->oi_mode = mode;
+    oi->oi_nlink = 1;
     oi->oi_ftype = 0;
     oi->oi_size = 0;
     oi->oi_indirect2 = 0;
