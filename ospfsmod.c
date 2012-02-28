@@ -1124,7 +1124,7 @@ allocate_inode(){
 	oi = ospfs_block(ospfs_super->os_firstinob);
  	int i;
 	for(i= 1; i < ospfs_super->os_ninodes; i++){
-		if(oi[i].oi_size == 0){	//ASSUMPTION size == 0 means this inode is not used
+		if(oi[i].oi_nlink == 0){	//ASSUMPTION size == 0 means this inode is not used
 			return i;
 		}
 	}
