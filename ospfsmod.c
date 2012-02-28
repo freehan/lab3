@@ -482,9 +482,6 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 		//by SK
 		od = ospfs_inode_data(dir_oi, (f_pos-2)*OSPFS_DIRENTRY_SIZE);
-#ifdef DEBUG
-		eprintk("inode # is %d, name is %s\n",od->od_ino,od->od_name);
-#endif
 		entry_oi = ospfs_inode(od->od_ino);
 		if(od->od_ino>0){//valid direntry
 			uint32_t type = -1;
@@ -502,14 +499,10 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino,type);
 			if(ok_so_far>=0){
 				f_pos++;
-				r = 1;
-				break;
 			}
 		}
 		else{ //for the skipped part
 			f_pos++;
-				r = 1;
-				break;
 		}
 		//eprintk("dir size is %d, f_pos is %d, is equal?\n",dir_oi->oi_size/OSPFS_DIRENTRY_SIZE, f_pos, f_pos == dir_oi->oi_size/OSPFS_DIRENTRY_SIZE);
 		if(f_pos >= dir_oi->oi_size / OSPFS_DIRENTRY_SIZE){ //meet the end of entries
@@ -1481,8 +1474,10 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 		return entry_ino;
 	}
 
+    ospfs_inode_t *oi = ospfs_inode(entry_ino);
 	ospfs_direntry_t * od = create_blank_direntry(dir_oi);
 	if (IS_ERR(od)){
+		oi->oi_nlink = 0;
 		return PTR_ERR(od);
 	}
 	strcpy(od->od_name, dentry->d_name.name);
@@ -1496,7 +1491,6 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	// you can also have a look at allocate_block() as allocate a free block for data.
 
     //XIA: initialize the new allocated inode
-    ospfs_inode_t *oi = ospfs_inode(entry_ino);
     oi->oi_mode = mode;
     oi->oi_nlink = 1;
     oi->oi_ftype = 0;
@@ -1547,12 +1541,33 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 static int
 ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 {
-	//ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
-	uint32_t entry_ino = 0;
+	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
+	if(dentry->d_name.len > OSPFS_MAXSYMLINKLEN || strlen(symname) > OSPFS_MAXSYMLINKLEN){
+		return -ENAMETOOLONG;
+	}
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len)!=0){
+		return -EEXIST;
+	}
 
-	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	uint32_t entry_ino = allocate_inode();
+	if(entry_ino == -ENOSPC){
+		return -ENOSPC;
+	}
 
+	ospfs_symlink_inode_t * symLink = (ospfs_symlink_inode_t *)ospfs_inode(entry_ino);
+	symLink->oi_size = dentry->d_name.len;
+	symLink->oi_ftype = OSPFS_FTYPE_SYMLINK;
+	symLink->oi_nlink = 1;
+	strcpy(symLink->oi_symlink,symname);
+
+	ospfs_direntry_t * od = create_blank_direntry(dir_oi);
+	if(IS_ERR(od)){
+		//clear the memory
+		symLink->oi_nlink--;
+		return PTR_ERR(od);
+	}
+	strcpy(od->od_name, dentry->d_name.name);
+	od->od_ino = entry_ino;
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
 	   getting here. */
@@ -1584,9 +1599,28 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
 	ospfs_symlink_inode_t *oi =
 		(ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
-	// Exercise: Your code here.
-
-	nd_set_link(nd, oi->oi_symlink);
+	char* symLink = oi->oi_symlink;
+	char* ptr = NULL;
+	//assume no check is needed
+	//char* dest = (char*) malloc(OSPFS_MAXNAMELEN+1);
+	char dest[OSPFS_MAXNAMELEN+1];
+	unsigned short uid = current->uid;
+	if(uid==0){
+		ptr = strchr(symLink,'?');
+		ptr++;
+		int len = strcspn(ptr,":");
+		strncpy(dest,ptr,len);
+		dest[len] = '\0';
+		eprintk("file name is %s\n",dest);	
+	}
+	else{
+		ptr = strchr(symLink,':');
+		ptr++;
+		strcpy(dest,ptr);
+		eprintk("file name is %s\n",dest);	
+	}
+	//nd_set_link(nd, oi->oi_symlink);
+	nd_set_link(nd,dest);
 	return (void *) 0;
 }
 
