@@ -15,7 +15,7 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 
-//#define DEBUG
+#define DEBUG
 /****************************************************************************
  * ospfsmod
  *
@@ -1222,9 +1222,9 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
 	/* EXERCISE: Your code here */
-    if(filp->f_flags == O_APPEND)
+    if(filp->f_flags & O_APPEND)
     {
-        //eprintk("try Append\n");
+        eprintk("try Append\n");
         (*f_pos) = oi->oi_size; 
     }
 	// If the user is writing past the end of the file, change the file's
@@ -1487,7 +1487,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	//	for example, when allocating file blocks, space exhausting happens, then we need to remove the direntry we created (just set its name as 0 and ino as 0)
 	// you can also have a look at allocate_block() as allocate a free block for data.
 
-    //XIA: copy the things into the allocated inode
+    //XIA: initialize the new allocated inode
     ospfs_inode_t *oi = ospfs_inode(entry_ino);
     oi->oi_mode = mode;
     oi->oi_ftype = 0;
