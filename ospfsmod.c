@@ -1475,6 +1475,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	//===========SK================
 	//use this part to register in the directory about the new file
 	entry_ino = allocate_inode();
+    eprintk("new indoe%d\n",entry_ino);
 	if(entry_ino == -ENOSPC){
 		return entry_ino;
 	}
